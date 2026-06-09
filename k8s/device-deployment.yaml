@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ota-device
+  labels:
+    app: ota-device
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ota-device
+  template:
+    metadata:
+      labels:
+        app: ota-device
+    spec:
+      containers:
+        - name: ota-device
+          image: ota-device:latest
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: ota-config

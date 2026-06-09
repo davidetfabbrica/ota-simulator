@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ota-postgres
+  labels:
+    app: ota-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ota-postgres
+  template:
+    metadata:
+      labels:
+        app: ota-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: ota-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: ota-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              value: "otapassword123"
+          volumeMounts:
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-sql
+          configMap:
+            name: ota-init-sql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ota-postgres
+spec:
+  selector:
+    app: ota-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

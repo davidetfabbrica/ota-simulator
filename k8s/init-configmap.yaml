@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ota-init-sql
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS firmware_versions (
+        id          SERIAL PRIMARY KEY,
+        version     TEXT NOT NULL UNIQUE,
+        label       TEXT,
+        created_at  TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS device_state (
+        id               SERIAL PRIMARY KEY,
+        device_id        TEXT NOT NULL UNIQUE,
+        current_version  TEXT,
+        previous_version TEXT,
+        last_seen        TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS update_events (
+        id           SERIAL PRIMARY KEY,
+        device_id    TEXT,
+        event_type   TEXT,
+        from_version TEXT,
+        to_version   TEXT,
+        created_at   TIMESTAMP DEFAULT NOW()
+    );
+
+    INSERT INTO firmware_versions (version, label) VALUES
+        ('1.0.0', 'Initial release'),
+        ('1.1.0', 'Bug fixes'),
+        ('1.2.0', 'Performance improvements')
+    ON CONFLICT (version) DO NOTHING;
