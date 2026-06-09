@@ -1,0 +1,21 @@
+# Virtual environments - never commit these
+venv/
+.venv/
+env/
+
+# Environment variables - credentials live here, never commit
+.env
+
+# Python cache files - generated automatically, not needed in git
+__pycache__/
+*.pyc
+*.pyo
+
+# Docker volumes and local data
+postgres_data/
+
+# macOS system files
+.DS_Store
+
+# VS Code settings
+.vs/
