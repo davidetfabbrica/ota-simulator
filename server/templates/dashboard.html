@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OTA Update Console</title>
+  <style>
+    /* ----------------------------------------------------------------
+       Base styles - dark terminal theme appropriate for an ops dashboard
+    ---------------------------------------------------------------- */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      color: #58a6ff;
+      font-size: 20px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 12px;
+    }
+
+    h2 {
+      color: #8b949e;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    /* ----------------------------------------------------------------
+       Layout - two columns on wide screens, single column on narrow
+    ---------------------------------------------------------------- */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    /* ----------------------------------------------------------------
+       Cards - each panel on the dashboard
+    ---------------------------------------------------------------- */
+    .card {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 20px;
+    }
+
+    /* ----------------------------------------------------------------
+       Device status panel
+    ---------------------------------------------------------------- */
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid #21262d;
+    }
+
+    .status-row:last-child {
+      border-bottom: none;
+    }
+
+    .status-label {
+      color: #8b949e;
+      font-size: 12px;
+    }
+
+    .status-value {
+      color: #c9d1d9;
+      font-weight: bold;
+    }
+
+    /* Online/offline indicator dot */
+    .indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .indicator.online  { background: #3fb950; box-shadow: 0 0 6px #3fb950; }
+    .indicator.offline { background: #f85149; box-shadow: 0 0 6px #f85149; }
+
+    /* ----------------------------------------------------------------
+       Firmware list and buttons
+    ---------------------------------------------------------------- */
+    .firmware-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #21262d;
+    }
+
+    .firmware-item:last-child {
+      border-bottom: none;
+    }
+
+    .firmware-version {
+      color: #c9d1d9;
+      font-weight: bold;
+    }
+
+    .firmware-label {
+      color: #8b949e;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    button {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      padding: 4px 12px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover:not(:disabled) {
+      background: #30363d;
+      color: #58a6ff;
+      border-color: #58a6ff;
+    }
+
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Rollback button is more prominent - it's a recovery action */
+    .btn-rollback {
+      background: #3d1f1f;
+      border-color: #f85149;
+      color: #f85149;
+      width: 100%;
+      padding: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    .btn-rollback:hover:not(:disabled) {
+      background: #5c2a2a;
+      color: #f85149;
+      border-color: #f85149;
+    }
+
+    /* ----------------------------------------------------------------
+       Event log table
+    ---------------------------------------------------------------- */
+    .log-card {
+      grid-column: 1 / -1;   /* span full width */
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    thead th {
+      color: #8b949e;
+      text-align: left;
+      padding: 6px 8px;
+      border-bottom: 1px solid #21262d;
+      font-weight: normal;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    tbody tr:hover {
+      background: #1c2128;
+    }
+
+    tbody td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #161b22;
+      color: #c9d1d9;
+    }
+
+    /* Colour-code event types so they're easy to scan */
+    .event-register { color: #58a6ff; }
+    .event-poll     { color: #8b949e; }
+    .event-push     { color: #d29922; }
+    .event-apply    { color: #3fb950; }
+    .event-rollback { color: #f85149; }
+    .event-error    { color: #f85149; }
+
+    /* ----------------------------------------------------------------
+       Status message shown at the top when an action is taken
+    ---------------------------------------------------------------- */
+    #message {
+      display: none;
+      padding: 10px 16px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    #message.success {
+      background: #1a2e1a;
+      border: 1px solid #3fb950;
+      color: #3fb950;
+      display: block;
+    }
+
+    #message.error {
+      background: #2e1a1a;
+      border: 1px solid #f85149;
+      color: #f85149;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>OTA Update Console</h1>
+
+  <!-- Status message bar - hidden until an action is taken -->
+  <div id="message"></div>
+
+  <div class="grid">
+
+    <!-- ----------------------------------------------------------------
+         Device status panel
+    ---------------------------------------------------------------- -->
+    <div class="card">
+      <h2>Device Status</h2>
+
+      <div class="status-row">
+        <span class="status-label">Device ID</span>
+        <span class="status-value" id="device-id">—</span>
+      </div>
+
+      <div class="status-row">
+        <span class="status-label">Status</span>
+        <span class="status-value" id="device-online">—</span>
+      </div>
+
+      <div class="status-row">
+        <span class="status-label">Current Version</span>
+        <span class="status-value" id="current-version">—</span>
+      </div>
+
+      <div class="status-row">
+        <span class="status-label">Previous Version</span>
+        <span class="status-value" id="previous-version">—</span>
+      </div>
+
+      <div class="status-row">
+        <span class="status-label">Last Seen</span>
+        <span class="status-value" id="last-seen">—</span>
+      </div>
+
+      <!-- Rollback button - disabled until a previous version exists -->
+      <button class="btn-rollback" id="btn-rollback" disabled onclick="triggerRollback()">
+        Rollback to Previous Version
+      </button>
+    </div>
+
+    <!-- ----------------------------------------------------------------
+         Firmware versions panel
+    ---------------------------------------------------------------- -->
+    <div class="card">
+      <h2>Available Firmware</h2>
+      <div id="firmware-list">Loading...</div>
+    </div>
+
+  </div>
+
+  <!-- ----------------------------------------------------------------
+       Event log - spans full width
+  ---------------------------------------------------------------- -->
+  <div class="card log-card">
+    <h2>Event Log</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Device</th>
+          <th>Event</th>
+          <th>From</th>
+          <th>To</th>
+        </tr>
+      </thead>
+      <tbody id="event-log">
+        <tr><td colspan="5">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    // ------------------------------------------------------------------
+    // Dashboard JavaScript
+    // Fetches device status, firmware list, and event log every 5 seconds.
+    // All API calls go to the same server that served this HTML page.
+    // ------------------------------------------------------------------
+
+    // Tracks whether the rollback button should be enabled
+    let hasPreviousVersion = false;
+
+    // ------------------------------------------------------------------
+    // Fetch and render device status
+    // ------------------------------------------------------------------
+    async function fetchStatus() {
+      try {
+        const response = await fetch("/api/device/status");
+        const data = await response.json();
+
+        // Device ID
+        document.getElementById("device-id").textContent =
+          data.device_id || "—";
+
+        // Online indicator
+        const onlineEl = document.getElementById("device-online");
+        if (data.online) {
+          onlineEl.innerHTML = '<span class="indicator online"></span>Online';
+        } else {
+          onlineEl.innerHTML = '<span class="indicator offline"></span>Offline';
+        }
+
+        // Version fields
+        document.getElementById("current-version").textContent =
+          data.current_version || "—";
+
+        hasPreviousVersion = !!data.previous_version;
+        document.getElementById("previous-version").textContent =
+          data.previous_version || "—";
+
+        // Format the last_seen timestamp to something readable
+        if (data.last_seen) {
+          const date = new Date(data.last_seen);
+          document.getElementById("last-seen").textContent =
+            date.toLocaleTimeString();
+        } else {
+          document.getElementById("last-seen").textContent = "—";
+        }
+
+        // Enable rollback only if there is a previous version to go back to
+        document.getElementById("btn-rollback").disabled = !hasPreviousVersion;
+
+      } catch (err) {
+        console.error("Failed to fetch device status:", err);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Fetch and render firmware list
+    // ------------------------------------------------------------------
+    async function fetchFirmware() {
+      try {
+        const response = await fetch("/api/firmware");
+        const versions = await response.json();
+
+        const container = document.getElementById("firmware-list");
+
+        if (versions.length === 0) {
+          container.textContent = "No firmware versions available.";
+          return;
+        }
+
+        // Build the list of firmware versions with a Push button each
+        container.innerHTML = versions.map(v => `
+          <div class="firmware-item">
+            <span>
+              <span class="firmware-version">${v.version}</span>
+              <span class="firmware-label">${v.label || ""}</span>
+            </span>
+            <button onclick="pushVersion('${v.version}')">Push</button>
+          </div>
+        `).join("");
+
+      } catch (err) {
+        console.error("Failed to fetch firmware:", err);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Fetch and render event log
+    // ------------------------------------------------------------------
+    async function fetchHistory() {
+      try {
+        const response = await fetch("/api/history");
+        const events = await response.json();
+
+        const tbody = document.getElementById("event-log");
+
+        if (events.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='5'>No events yet.</td></tr>";
+          return;
+        }
+
+        tbody.innerHTML = events.map(e => {
+          // Format timestamp
+          const time = e.created_at
+            ? new Date(e.created_at).toLocaleTimeString()
+            : "—";
+
+          // Apply colour class based on event type
+          const cls = `event-${e.event_type}`;
+
+          return `
+            <tr>
+              <td>${time}</td>
+              <td>${e.device_id || "—"}</td>
+              <td class="${cls}">${e.event_type}</td>
+              <td>${e.from_version || "—"}</td>
+              <td>${e.to_version || "—"}</td>
+            </tr>
+          `;
+        }).join("");
+
+      } catch (err) {
+        console.error("Failed to fetch history:", err);
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Push a firmware version to the device
+    // ------------------------------------------------------------------
+    async function pushVersion(version) {
+      try {
+        const response = await fetch("/api/device/push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ version })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          showMessage(`Push queued: version ${version} will be applied on next poll`, "success");
+        } else {
+          showMessage(`Push failed: ${data.error}`, "error");
+        }
+
+      } catch (err) {
+        showMessage("Push failed: could not reach server", "error");
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Trigger a rollback
+    // ------------------------------------------------------------------
+    async function triggerRollback() {
+      try {
+        const response = await fetch("/api/device/rollback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          showMessage(`Rollback queued: will revert to ${data.target_version} on next poll`, "success");
+        } else {
+          showMessage(`Rollback failed: ${data.error}`, "error");
+        }
+
+      } catch (err) {
+        showMessage("Rollback failed: could not reach server", "error");
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Show a temporary status message at the top of the page
+    // ------------------------------------------------------------------
+    function showMessage(text, type) {
+      const el = document.getElementById("message");
+      el.textContent = text;
+      el.className = type;   // applies 'success' or 'error' CSS class
+
+      // Hide the message after 4 seconds
+      setTimeout(() => {
+        el.className = "";
+        el.style.display = "none";
+      }, 4000);
+    }
+
+    // ------------------------------------------------------------------
+    // Refresh everything - called on load and every 5 seconds
+    // ------------------------------------------------------------------
+    function refresh() {
+      fetchStatus();
+      fetchFirmware();
+      fetchHistory();
+    }
+
+    // Run immediately on page load, then every 5 seconds
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+
+</body>
+</html>
